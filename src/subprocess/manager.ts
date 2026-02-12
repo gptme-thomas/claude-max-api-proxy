@@ -21,6 +21,7 @@ import type { ClaudeModel } from "../adapter/openai-to-cli.js";
 export interface SubprocessOptions {
   model: ClaudeModel;
   sessionId?: string;
+  systemPrompt?: string;
   cwd?: string;
   timeout?: number;
 }
@@ -137,12 +138,19 @@ export class ClaudeSubprocess extends EventEmitter {
       "--model",
       options.model, // Model alias (opus/sonnet/haiku)
       "--no-session-persistence", // Don't save sessions
-      prompt, // Pass prompt as argument (more reliable than stdin)
     ];
+
+    if (options.systemPrompt) {
+      // Replace Claude Code's default system prompt with the caller's
+      args.push("--system-prompt", options.systemPrompt);
+    }
 
     if (options.sessionId) {
       args.push("--session-id", options.sessionId);
     }
+
+    // Prompt must be last argument
+    args.push(prompt);
 
     return args;
   }
