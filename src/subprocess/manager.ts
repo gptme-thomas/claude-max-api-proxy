@@ -143,6 +143,9 @@ export class ClaudeSubprocess extends EventEmitter {
     if (options.systemPrompt) {
       // Replace Claude Code's default system prompt with the caller's
       args.push("--system-prompt", options.systemPrompt);
+      // Bypass Claude Code's permission system so it doesn't interfere
+      // with the caller's own tool permission model
+      args.push("--permission-mode", "bypassPermissions");
     }
 
     if (options.sessionId) {
