@@ -43,6 +43,12 @@ export async function handleChatCompletions(
 
     // Convert to CLI input format
     const cliInput = openaiToCli(body);
+    const systemMsgs = body.messages.filter(m => m.role === "system");
+    const userMsgs = body.messages.filter(m => m.role === "user");
+    console.error(`[Request] model=${cliInput.model} msgs=${body.messages.length} (${systemMsgs.length} system, ${userMsgs.length} user) prompt=${cliInput.prompt.length}chars systemPrompt=${cliInput.systemPrompt?.length ?? 0}chars`);
+    if (cliInput.systemPrompt) {
+      console.error(`[Request] systemPrompt preview: ${cliInput.systemPrompt.slice(0, 200)}...`);
+    }
     const subprocess = new ClaudeSubprocess();
 
     if (stream) {

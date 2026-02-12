@@ -2,7 +2,7 @@
  * Converts OpenAI chat request format to Claude CLI input
  */
 
-import type { OpenAIChatRequest } from "../types/openai.js";
+import type { OpenAIChatRequest, OpenAIChatMessage } from "../types/openai.js";
 
 export type ClaudeModel = "opus" | "sonnet" | "haiku";
 
@@ -57,6 +57,21 @@ export function extractModel(model: string): ClaudeModel {
  *
  * Non-system messages are formatted into a prompt string for the CLI.
  */
+/**
+ * Extract text from a message content field, handling both string and
+ * array-of-parts (multimodal) formats.
+ */
+function extractText(content: OpenAIChatMessage["content"]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  // Array of content parts — concatenate all text parts
+  return content
+    .filter((part) => part.type === "text" && part.text)
+    .map((part) => part.text!)
+    .join("\n");
+}
+
 export function convertMessages(messages: OpenAIChatRequest["messages"]): {
   prompt: string;
   systemPrompt?: string;
@@ -65,17 +80,18 @@ export function convertMessages(messages: OpenAIChatRequest["messages"]): {
   const promptParts: string[] = [];
 
   for (const msg of messages) {
+    const text = extractText(msg.content);
     switch (msg.role) {
       case "system":
-        systemParts.push(msg.content);
+        systemParts.push(text);
         break;
 
       case "user":
-        promptParts.push(msg.content);
+        promptParts.push(text);
         break;
 
       case "assistant":
-        promptParts.push(`<previous_response>\n${msg.content}\n</previous_response>\n`);
+        promptParts.push(`<previous_response>\n${text}\n</previous_response>\n`);
         break;
     }
   }
