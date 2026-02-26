@@ -2,7 +2,7 @@
  * Converts OpenAI chat request format to Claude CLI input
  */
 
-import type { OpenAIChatRequest } from "../types/openai.js";
+import type { OpenAIChatRequest, OpenAIChatMessage } from "../types/openai.js";
 
 export type ClaudeModel = "opus" | "sonnet" | "haiku";
 
@@ -10,6 +10,7 @@ export interface CliInput {
   prompt: string;
   model: ClaudeModel;
   sessionId?: string;
+  systemPrompt?: string;
 }
 
 const MODEL_MAP: Record<string, ClaudeModel> = {
@@ -47,43 +48,69 @@ export function extractModel(model: string): ClaudeModel {
 }
 
 /**
- * Convert OpenAI messages array to a single prompt string for Claude CLI
+ * Separate system messages from conversation messages.
  *
- * Claude Code CLI in --print mode expects a single prompt, not a conversation.
- * We format the messages into a readable format that preserves context.
+ * System messages are extracted and concatenated into a single system prompt
+ * string, which gets passed to Claude CLI via --system-prompt. This replaces
+ * Claude Code's default system prompt, allowing the caller (e.g. gptme) to
+ * control model behavior.
+ *
+ * Non-system messages are formatted into a prompt string for the CLI.
  */
-export function messagesToPrompt(messages: OpenAIChatRequest["messages"]): string {
-  const parts: string[] = [];
+/**
+ * Extract text from a message content field, handling both string and
+ * array-of-parts (multimodal) formats.
+ */
+function extractText(content: OpenAIChatMessage["content"]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  // Array of content parts — concatenate all text parts
+  return content
+    .filter((part) => part.type === "text" && part.text)
+    .map((part) => part.text!)
+    .join("\n");
+}
+
+export function convertMessages(messages: OpenAIChatRequest["messages"]): {
+  prompt: string;
+  systemPrompt?: string;
+} {
+  const systemParts: string[] = [];
+  const promptParts: string[] = [];
 
   for (const msg of messages) {
+    const text = extractText(msg.content);
     switch (msg.role) {
       case "system":
-        // System messages become context instructions
-        parts.push(`<system>\n${msg.content}\n</system>\n`);
+        systemParts.push(text);
         break;
 
       case "user":
-        // User messages are the main prompt
-        parts.push(msg.content);
+        promptParts.push(text);
         break;
 
       case "assistant":
-        // Previous assistant responses for context
-        parts.push(`<previous_response>\n${msg.content}\n</previous_response>\n`);
+        promptParts.push(`<previous_response>\n${text}\n</previous_response>\n`);
         break;
     }
   }
 
-  return parts.join("\n").trim();
+  return {
+    prompt: promptParts.join("\n").trim(),
+    systemPrompt: systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
+  };
 }
 
 /**
  * Convert OpenAI chat request to CLI input format
  */
 export function openaiToCli(request: OpenAIChatRequest): CliInput {
+  const { prompt, systemPrompt } = convertMessages(request.messages);
   return {
-    prompt: messagesToPrompt(request.messages),
+    prompt,
     model: extractModel(request.model),
     sessionId: request.user, // Use OpenAI's user field for session mapping
+    systemPrompt,
   };
 }
